@@ -2,8 +2,6 @@
 
 A local, privacy-first trading analytics dashboard — similar to TradeZella — built specifically for **Interactive Brokers PortfolioAnalyst** reports. Drop in your IBKR CSV and get an instant overview of your performance without sending data to any third-party service.
 
-![Dashboard preview showing equity curve, win/loss split, sector breakdown, and trade table](https://i.imgur.com/placeholder.png)
-
 ---
 
 ## What It Shows
