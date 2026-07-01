@@ -70,6 +70,7 @@ function UploadScreen({ onUpload, uploading, error }) {
             <UploadIcon className={`w-12 h-12 mx-auto mb-4 ${dragging ? 'text-violet-400' : 'text-gray-500'}`} />
             <p className="text-gray-200 font-medium">Drop your CSV file here</p>
             <p className="text-gray-500 text-sm mt-1">or click to browse files</p>
+            <p className="text-gray-600 text-xs mt-3 font-mono">.csv format required</p>
           </>
         )}
         <input
@@ -101,17 +102,31 @@ export default function App() {
   const [error, setError] = useState(null)
   const [uploadError, setUploadError] = useState(null)
 
-  useEffect(() => {
-    api.status()
-      .then(s => {
-        if (s.data_loaded) {
-          loadDashboard()
-        } else {
-          setPhase('no-data')
-        }
-      })
-      .catch(err => { setError(err.message); setPhase('error') })
-  }, [])
+  function checkStatus() {
+    setPhase('checking')
+    setError(null)
+    const attempt = (retriesLeft) => {
+      api.status()
+        .then(s => {
+          if (s.data_loaded) {
+            loadDashboard()
+          } else {
+            setPhase('no-data')
+          }
+        })
+        .catch(err => {
+          if (retriesLeft > 0) {
+            setTimeout(() => attempt(retriesLeft - 1), 1000)
+          } else {
+            setError(err.message)
+            setPhase('error')
+          }
+        })
+    }
+    attempt(3)
+  }
+
+  useEffect(() => { checkStatus() }, [])
 
   function loadDashboard() {
     setPhase('loading')
@@ -153,6 +168,12 @@ export default function App() {
         <p className="font-bold mb-1">Failed to connect to backend</p>
         <p className="text-sm">{error}</p>
         <p className="text-xs text-red-400 mt-2">Make sure the backend is running: <code>uvicorn app:app --port 8000</code></p>
+        <button
+          onClick={checkStatus}
+          className="mt-4 text-xs px-3 py-1.5 rounded-lg bg-red-800/40 hover:bg-red-700/40 border border-red-700 transition-colors"
+        >
+          Retry
+        </button>
       </div>
     </div>
   )
