@@ -7,6 +7,7 @@ async function get(path) {
 }
 
 export const api = {
+  status:             () => get('/api/status'),
   summary:            () => get('/api/summary'),
   equityCurve:        () => get('/api/equity-curve'),
   monthlyPerformance: () => get('/api/monthly-performance'),
@@ -15,4 +16,16 @@ export const api = {
   longShort:          () => get('/api/long-short'),
   riskMetrics:        () => get('/api/risk-metrics'),
   topTrades:          () => get('/api/top-trades'),
+
+  uploadFile: async (file) => {
+    const form = new FormData()
+    form.append('file', file)
+    const res = await fetch(`${BASE}/api/upload`, { method: 'POST', body: form })
+    if (!res.ok) {
+      let detail = `Upload failed (${res.status})`
+      try { detail = (await res.json()).detail ?? detail } catch {}
+      throw new Error(detail)
+    }
+    return res.json()
+  },
 }

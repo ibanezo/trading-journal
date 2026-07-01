@@ -1,6 +1,6 @@
 # Trading Journal
 
-A local, privacy-first trading analytics dashboard — similar to TradeZella — built specifically for **Interactive Brokers PortfolioAnalyst** reports. Drop in your IBKR CSV and get an instant overview of your performance without sending data to any third-party service.
+A local, privacy-first trading analytics dashboard — similar to TradeZella — built specifically for **Interactive Brokers PortfolioAnalyst** reports. Start the app, upload your IBKR CSV directly from the UI, and get an instant overview of your performance without sending data to any third-party service.
 
 ---
 
@@ -16,7 +16,7 @@ A local, privacy-first trading analytics dashboard — similar to TradeZella —
 | **P&L by Sector** | Horizontal bar chart broken down by sector |
 | **Monthly Return** | Green/red bar chart for each calendar month |
 | **Risk Metrics** | Sharpe ratio, Sortino ratio, Max Drawdown, Beta, Alpha, Std Dev, and more |
-| **Trade Table** | All 400+ trades — sortable by any column, searchable by symbol or sector |
+| **Trade Table** | All trades — sortable by any column, searchable by symbol or sector |
 
 ---
 
@@ -63,23 +63,13 @@ trading-journal/
 └── README.md
 ```
 
-The CSV data file lives **one level above** the `trading-journal/` folder:
-
-```
-Investing/
-├── your_ibkr_report.csv   ← your IBKR PortfolioAnalyst export
-└── trading-journal/
-    ├── backend/
-    └── frontend/
-```
-
 ---
 
 ## Installation
 
 ### 1. Clone or copy the project
 
-If you received this as a folder, place it so that the directory structure above is respected — the CSV sits next to `trading-journal/`, not inside it.
+Place the `trading-journal/` folder wherever you like — no special directory structure required.
 
 ### 2. Install Python dependencies
 
@@ -88,7 +78,7 @@ cd trading-journal/backend
 python3 -m pip install -r requirements.txt
 ```
 
-This installs FastAPI, Uvicorn, Pandas, and NumPy into your user Python environment.
+This installs FastAPI, Uvicorn, Pandas, NumPy, and python-multipart into your user Python environment.
 
 ### 3. Install frontend dependencies
 
@@ -136,22 +126,38 @@ npm run dev
 | Backend health | http://localhost:8000/health | `{"status":"ok",...}` |
 | Dashboard | http://localhost:5173 | Trading Journal UI |
 
+The app starts without any data loaded — open the dashboard in your browser and use the **Upload File** button to load your report.
+
 ---
 
-## Updating Your Data
+## Loading Your Data
 
-When you export a new IBKR PortfolioAnalyst report:
+### In-app upload (recommended)
 
 1. Export an **Inception** or custom date-range report from [PortfolioAnalyst](https://www.interactivebrokers.com/en/trading/portfolio-analyst.php) as a **CSV**.
-2. Replace (or drop alongside) the existing CSV file in the `Investing/` folder.
-   The backend auto-detects any `.csv` file in that directory — no code change needed.
-   If you have multiple CSVs, point to the right one with an environment variable:
+2. Open the dashboard at http://localhost:5173.
+3. On the upload screen, **drop your CSV file** onto the upload area or click it to browse for the file.
+4. The dashboard loads automatically once the file is parsed.
+
+To load a new report later, click **Upload New File** in the top-right corner of the header.
+
+### Auto-detect on startup (alternative)
+
+If you prefer not to upload manually each time, place your CSV file in the folder **one level above** `trading-journal/`:
+
+```
+Investing/
+├── your_ibkr_report.csv   ← auto-detected on startup
+└── trading-journal/
+    ├── backend/
+    └── frontend/
+```
+
+The backend detects any `.csv` file in that directory and loads it automatically. If you have multiple CSVs, point to the right one with an environment variable:
 
 ```bash
 DATA_FILE=/path/to/your_report.csv ./start.sh
 ```
-
-3. Restart the backend (Ctrl+C and re-run, or the `start.sh` script handles this automatically).
 
 > The app reads the CSV once at startup — no database, no cloud sync, no data leaves your machine.
 
@@ -163,14 +169,16 @@ The backend exposes these REST endpoints, all at `http://localhost:8000`:
 
 | Endpoint | Returns |
 |---|---|
+| `GET /api/status` | Whether data is loaded and the current filename |
+| `POST /api/upload` | Upload a CSV file; parses it and loads it into memory |
 | `GET /api/summary` | Win rate, profit factor, R/R ratio, avg winner/loser, gross P&L |
-| `GET /api/equity-curve` | 16 monthly data points: account + 3 benchmark returns |
-| `GET /api/trades` | All ~400 instrument-level trades with P&L, sector, type |
+| `GET /api/equity-curve` | Monthly data points: account + 3 benchmark returns |
+| `GET /api/trades` | All instrument-level trades with P&L, sector, type |
 | `GET /api/risk-metrics` | Sharpe, Sortino, Max Drawdown, Beta, Alpha, Std Dev |
 | `GET /api/sector-breakdown` | P&L aggregated by sector with win rates |
 | `GET /api/monthly-performance` | Per-month return percentages |
 | `GET /api/top-trades` | Top 5 winners and top 5 losers |
-| `GET /health` | Server health check |
+| `GET /health` | Server health check with data-loaded status |
 
 ---
 
@@ -186,17 +194,17 @@ This app reads an IBKR **PortfolioAnalyst** report, which is an _aggregated_ per
 
 ## Troubleshooting
 
-**"Failed to load data" in the browser**
+**"Failed to connect to backend" in the browser**
 → The backend is not running. Start it first with `./start.sh` or the manual method above.
+
+**Upload fails with "Failed to parse CSV"**
+→ Make sure you exported an IBKR **PortfolioAnalyst** report (not an Activity Statement or other format). The file must be the multi-section CSV format that PortfolioAnalyst generates.
 
 **`ModuleNotFoundError: No module named 'fastapi'`**
 → Run `python3 -m pip install -r requirements.txt` from the `backend/` folder.
 
 **`address already in use` on port 8000 or 5173**
 → Something is using that port. Run `lsof -ti:8000 | xargs kill -9` (or 5173) to free it, then retry.
-
-**`RuntimeError: Data file not found`**
-→ The CSV is not where the backend expects it. Check that your CSV file is in the `Investing/` folder (one level above `trading-journal/`), and that the filename in `app.py` matches exactly.
 
 **Tailwind styles not loading (plain HTML look)**
 → Run `npm install` inside `frontend/` to restore `node_modules`, then restart the frontend.
@@ -208,6 +216,6 @@ This app reads an IBKR **PortfolioAnalyst** report, which is an _aggregated_ per
 | Layer | Technology |
 |---|---|
 | Backend | Python 3.9 · FastAPI · Pandas · NumPy · Uvicorn |
-| Frontend | React 18 · Vite · Tailwind CSS 3 · Recharts |
+| Frontend | React 19 · Vite · Tailwind CSS 3 · Recharts |
 | Data | IBKR PortfolioAnalyst CSV (multi-section format) |
 | Charts | Recharts (LineChart, BarChart, PieChart) |

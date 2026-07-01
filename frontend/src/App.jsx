@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { api } from './api'
 import MetricCard from './components/MetricCard'
 import EquityCurve from './components/EquityCurve'
@@ -15,21 +15,106 @@ function fmt(n, decimals = 2) {
   return `${n < 0 ? '-' : ''}€${s}`
 }
 
-function Spinner() {
+function Spinner({ label = 'Loading trading data…' }) {
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen gap-4">
+    <div className="flex flex-col items-center justify-center min-h-screen gap-4 bg-gray-950">
       <div className="w-10 h-10 border-4 border-violet-500 border-t-transparent rounded-full animate-spin" />
-      <p className="text-gray-500 text-sm">Loading trading data…</p>
+      <p className="text-gray-500 text-sm">{label}</p>
+    </div>
+  )
+}
+
+function UploadIcon({ className = 'w-12 h-12' }) {
+  return (
+    <svg className={className} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M12 16.5v-9m0 0-3 3m3-3 3 3M6.75 19.5a4.5 4.5 0 0 1-1.41-8.775 5.25 5.25 0 0 1 10.233-2.33 3 3 0 0 1 3.758 3.848A3.752 3.752 0 0 1 18 19.5H6.75Z" />
+    </svg>
+  )
+}
+
+function UploadScreen({ onUpload, uploading, error }) {
+  const [dragging, setDragging] = useState(false)
+  const inputRef = useRef(null)
+
+  function handleFiles(files) {
+    const file = files[0]
+    if (file) onUpload(file)
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-950 text-gray-200 flex flex-col items-center justify-center px-4">
+      <div className="text-center mb-8">
+        <h1 className="text-2xl font-bold text-white tracking-tight">Trading Journal</h1>
+        <p className="text-gray-400 mt-2 text-sm">Upload your IBKR PortfolioAnalyst report to get started</p>
+      </div>
+
+      <div
+        className={`relative w-full max-w-md rounded-2xl border-2 border-dashed p-12 text-center cursor-pointer transition-colors select-none
+          ${dragging
+            ? 'border-violet-500 bg-violet-900/10'
+            : 'border-gray-700 hover:border-gray-500 hover:bg-gray-900/40'
+          }`}
+        onClick={() => !uploading && inputRef.current?.click()}
+        onDragOver={e => { e.preventDefault(); if (!uploading) setDragging(true) }}
+        onDragLeave={e => { e.preventDefault(); setDragging(false) }}
+        onDrop={e => { e.preventDefault(); setDragging(false); if (!uploading) handleFiles(e.dataTransfer.files) }}
+      >
+        {uploading ? (
+          <>
+            <div className="w-10 h-10 border-4 border-violet-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+            <p className="text-violet-300 font-medium">Uploading and parsing…</p>
+            <p className="text-gray-500 text-sm mt-1">This may take a moment</p>
+          </>
+        ) : (
+          <>
+            <UploadIcon className={`w-12 h-12 mx-auto mb-4 ${dragging ? 'text-violet-400' : 'text-gray-500'}`} />
+            <p className="text-gray-200 font-medium">Drop your CSV file here</p>
+            <p className="text-gray-500 text-sm mt-1">or click to browse files</p>
+          </>
+        )}
+        <input
+          ref={inputRef}
+          type="file"
+          accept=".csv"
+          className="hidden"
+          onChange={e => { if (e.target.files[0]) handleFiles(e.target.files) }}
+        />
+      </div>
+
+      {error && (
+        <div className="mt-4 bg-red-900/30 border border-red-700 rounded-lg px-4 py-3 text-red-300 text-sm max-w-md w-full">
+          {error}
+        </div>
+      )}
+
+      <p className="mt-6 text-gray-600 text-xs text-center max-w-sm">
+        Export a PortfolioAnalyst report from IBKR as a CSV and upload it here.
+        Your data never leaves your machine.
+      </p>
     </div>
   )
 }
 
 export default function App() {
+  const [phase, setPhase] = useState('checking')
   const [data, setData] = useState({})
-  const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
+  const [uploadError, setUploadError] = useState(null)
 
   useEffect(() => {
+    api.status()
+      .then(s => {
+        if (s.data_loaded) {
+          loadDashboard()
+        } else {
+          setPhase('no-data')
+        }
+      })
+      .catch(err => { setError(err.message); setPhase('error') })
+  }, [])
+
+  function loadDashboard() {
+    setPhase('loading')
     Promise.all([
       api.summary(),
       api.equityCurve(),
@@ -41,16 +126,31 @@ export default function App() {
     ])
       .then(([summary, equityCurve, monthly, trades, sectors, riskMetrics, topTrades]) => {
         setData({ summary, equityCurve, monthly, trades, sectors, riskMetrics, topTrades })
-        setLoading(false)
+        setPhase('ready')
       })
-      .catch(err => { setError(err.message); setLoading(false) })
-  }, [])
+      .catch(err => { setError(err.message); setPhase('error') })
+  }
 
-  if (loading) return <Spinner />
-  if (error) return (
-    <div className="flex items-center justify-center min-h-screen">
+  async function handleUpload(file) {
+    setUploadError(null)
+    setPhase('uploading')
+    try {
+      await api.uploadFile(file)
+      loadDashboard()
+    } catch (err) {
+      setUploadError(err.message)
+      setPhase('no-data')
+    }
+  }
+
+  if (phase === 'checking' || phase === 'loading') return <Spinner />
+  if (phase === 'uploading') return <UploadScreen onUpload={handleUpload} uploading={true} error={null} />
+  if (phase === 'no-data') return <UploadScreen onUpload={handleUpload} uploading={false} error={uploadError} />
+
+  if (phase === 'error') return (
+    <div className="flex items-center justify-center min-h-screen bg-gray-950">
       <div className="bg-red-900/30 border border-red-700 rounded-xl p-6 text-red-300 max-w-md">
-        <p className="font-bold mb-1">Failed to load data</p>
+        <p className="font-bold mb-1">Failed to connect to backend</p>
         <p className="text-sm">{error}</p>
         <p className="text-xs text-red-400 mt-2">Make sure the backend is running: <code>uvicorn app:app --port 8000</code></p>
       </div>
@@ -84,6 +184,18 @@ export default function App() {
             }`}>
               {ks.cumulative_return >= 0 ? '+' : ''}{ks.cumulative_return?.toFixed(2)}% inception
             </span>
+            <label className="cursor-pointer flex items-center gap-1.5 bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white text-xs px-3 py-1.5 rounded-full border border-gray-700 transition-colors">
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 16.5v-9m0 0-3 3m3-3 3 3M6.75 19.5a4.5 4.5 0 0 1-1.41-8.775 5.25 5.25 0 0 1 10.233-2.33 3 3 0 0 1 3.758 3.848A3.752 3.752 0 0 1 18 19.5H6.75Z" />
+              </svg>
+              Upload New File
+              <input
+                type="file"
+                accept=".csv"
+                className="hidden"
+                onChange={e => { if (e.target.files[0]) handleUpload(e.target.files[0]) }}
+              />
+            </label>
           </div>
         </div>
       </header>
